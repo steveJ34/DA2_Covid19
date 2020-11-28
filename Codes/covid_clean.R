@@ -101,8 +101,8 @@ df_pop %>% filter( population > 500 )
 # Check for summary as well
 summary( df_pop)
 
-# Save the clean data file
-# Saving raw population data to csv file
+
+# Saving clean population data to csv file
 
 # write.csv(df_pop, "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1//pop_data_clean.csv", row.names = FALSE)
 
@@ -176,6 +176,6 @@ library(dplyr)
 full_data_clean <- filter(full_data, CasePerCap > 0, DeathsPerCap > 0, Population > 0)
 
 
-
+# Saving full clean data to csv file
 
 #write.csv(full_data_clean, "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1//covid_data_clean.csv", row.names = FALSE)
