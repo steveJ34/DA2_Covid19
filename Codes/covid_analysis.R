@@ -37,7 +37,7 @@ library(texreg)
 library(ggthemes)
 library(dplyr)
 # Call the data from github
-my_data <- "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1/data /covid_data_clean.csv"
+my_data <- "https://raw.githubusercontent.com/steveJ34/DA2_Covid19/main/Data/Clean/covid_data_clean.csv"
 df <- read_csv( my_data )
 
 
