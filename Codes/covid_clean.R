@@ -20,7 +20,7 @@ rm(list=ls())
 library(tidyverse)
 
 # Call the data from github
-pop_data <- "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1/pop_data_raw.csv"
+pop_data <- "https://raw.githubusercontent.com/steveJ34/DA2_Covid19/main/Data/Raw/pop_data_raw.csv"
 df_pop <- read_csv( pop_data )
 
 ## Check the observations:
@@ -107,7 +107,7 @@ summary( df_pop)
 # write.csv(df_pop, "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1//pop_data_clean.csv", row.names = FALSE)
 
 
-covid_data <- "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1/covid_data_raw.csv"
+covid_data <- "https://raw.githubusercontent.com/steveJ34/DA2_Covid19/main/Data/Raw/covid_data_raw.csv"
 df_covid <- read_csv( covid_data )
 
 # Dropping redundant variables (‘FIPS, Admin2, Last Update, Lat, Long, Combined Key, Incidence Rate, Case.Fatality Ratio’)
@@ -178,4 +178,4 @@ full_data_clean <- filter(full_data, CasePerCap > 0, DeathsPerCap > 0, Populatio
 
 
 
-write.csv(full_data_clean, "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1//covid_data_clean.csv", row.names = FALSE)
+#write.csv(full_data_clean, "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1//covid_data_clean.csv", row.names = FALSE)
