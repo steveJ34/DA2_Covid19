@@ -1,0 +1,284 @@
+---
+title: "DA2 Assignment 1"
+author: 'Istvan Janco #2003877'
+date: "11/28/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, out.width = "90%" )
+```
+
+## Introduction 
+Research Question: Do the number of recorded daily deaths due to Covid 19 correlate with the number of daily recorded cases?
+
+#### Introduction of the data
+
+   - Outcome variable: Recorded deaths per capita due to Covid 19 for the day of 8/10/2020
+   - Explanatory variable: Recorded cases per capita due to Covid 19 for the day of 8/10/2020
+   - Population: Total number of Covid 19 deaths and cases per capita in the world. The sample represents a snapshot of the general pattern of association for he day of 8/10/2020. 
+   
+   - Potential data quality issues and cleaning:
+      -  After the data was downloaded, all non-country observations (e.g. cruise ships) were removed, which yields incomplete coverage.
+      -  Some observations which contained missing values for population, confirmed cases of Covid 19 or number of deaths due to Covid 19 were dropped.
+      -  The variables were scaled up by 1M in order to enable a meaningful interpretation.
+
+
+```{r, include=FALSE}
+# Clear memory
+rm(list=ls())
+# Packages to use
+library(dplyr)
+library(tidyverse)
+# For scaling ggplots
+require(scales)
+# Estimate piecewise linear splines
+#install.packages("lspline")
+library(lspline)
+# Estimate robust SE
+#install.packages("estimatr")
+library(estimatr)
+# Compare models with robust SE
+#install.packages("texreg")
+library(texreg)
+#install.packages('huxtable')
+library(huxtable)
+# For different themes
+#install.packages(ggthemes)
+library(ggthemes)
+# Call the data from github
+my_data <- "/Users/steve_j/Documents/CEU /data_analysis/DA2assignment1/data /covid_data_clean.csv"
+df <- read_csv( my_data )
+
+```
+
+## Variables Summary and Distribution 
+
+```{r, message=FALSE, warning = FALSE, results='asis', print = TRUE, fig.width=15, fig.height=6}
+df %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(main = "Variable Distribution")
+
+```
+
+
+```{r, message=FALSE, results='asis', print = TRUE}
+library(knitr)
+df1<- df[,-c(1)]
+df_sum <- summary(df1)
+kable(df_sum[1:5,], caption = "Variable Summary")
+
+```
+
+ - The the distribution for all of the variables seems to be log normal.
+ 
+ - There are some extreme values on the left hand side. These reflect the population of observed coutries. 
+
+## Transformation of Variables  
+
+Log-log transformation (appendix 1.4.) is the most optimal due to the following reasons:     
+   - Substantive: it allows for a somewhat meaningful interpretation 
+   - Statistical: better approximation makes distribution is close to linear, thus it's easier to fit a proper model
+It is important to mention that some of the observations were dropped due to yielding negative values after the log transformation.
+
+``` {r, include=FALSE}
+df <- df %>% mutate( ln_CPC = log( CasePerCap ),
+                     ln_DPC = log( DeathsPerCap ),
+                     ln_CPC_sq = ln_CPC^2,
+                     ln_CPC_cb = ln_CPC^3)
+
+# Filtering out negative ln 
+library(dplyr)
+df <- filter(df, df$ln_CPC > 0, df$ln_DPC > 0)
+```
+
+## Model Comparison Results
+
+```{r, message=FALSE, results='asis', print = TRUE}
+# Simple
+reg1 <- lm_robust( ln_DPC ~ ln_CPC , data = df , se_type = "HC2")
+# Cubic
+reg2 <- lm_robust( ln_DPC ~ ln_CPC + ln_CPC_sq + ln_CPC_cb , data = df)
+# Piecewise Linear Spline
+cutoff_ln <- log( 50 )
+reg3 <- lm_robust(ln_DPC ~ lspline( ln_CPC , cutoff_ln ), data = df )
+# Weighted OLS
+reg4 <- lm_robust(ln_DPC ~ ln_CPC, data = df , weights = Population)
+htmlreg( list(reg1 , reg2 , reg3 , reg4),
+         type = 'html',
+         custom.model.names = c("Linear","Cubic","P.L.S","WOLS"),
+         custom.coef.names = c("Intercept","ln(Cases/capita)","ln(Cases/capita)^2",
+                               "ln(Cases/capita)^3","ln(Cases/capita<=50)","ln(Cases/capita>50)"),
+         caption = 'ln Recorded Deaths due to Covid 19 and ln Recorded Cases of Covid 19',
+         include.ci = FALSE, include.rmse = FALSE,include.adjrs = FALSE,
+         fontsize = 'scriptsize' )
+
+```
+
+Based on model comparison (Table 2) our chosen model is reg1 - ln_CPC ~ ln_DPC. The reasoning outlined below. 
+
+ - Substantive:  the model works well with log-log transformed variables. In addition, the magnitude of coefficients seems to be meaningful.
+  
+ - Statistical: the model is simple model, which enables easy to interpretation. It can offset the effect of log-log transformation. 
+
+```{r , include=FALSE }
+# Get the predicted y values from the model
+df$reg1_y_pred <- reg1$fitted.values
+# Calculate the errors of the model
+df$reg1_res <- df$ln_DPC - df$reg1_y_pred 
+# Find country with largest negative errors
+l1 <- df %>% top_n( -1 , reg1_res ) %>% 
+      select( Country , ln_DPC, reg1_y_pred , reg1_res )
+# Find country with largest positive errors
+u1 <- df %>% top_n( 1 , reg1_res ) %>% 
+       select( Country , ln_DPC , reg1_y_pred , reg1_res )
+```
+## Hypothesis Testinf on Beta
+
+- The test hypothesis is the following $H_0: \beta = 0, \, H_A: \beta \neq 0$ or not in our model. 
+  - The estimated t-statistics is `r round(reg1$statistic[2],2)`, with p-value: `r reg1$p.value[2]`. 
+  - Choosing a significance level of p = 0.05. 
+  - Thus we reject the $H_0$, which means the number of daily recorded deaths per capita due to Covid 19 is not uncorrelated with daily number to recorded cases of Covid 19 per capita.
+
+``` {r, include = FALSE}
+
+summary(reg1)
+```
+
+  - Based on the p-value being less then the  the   significance level, the conclusion can be made that the sample data provides enough evidence to reject the null hypothesis. The data favors the hypothesis that there is a non-zero correlation. Changes in the independent variable are associated with changes in the dependent  variable.
+
+## Residuals Analysis
+
+- The summary of residual analysis is provided below:
+  - The largest negative deviance from the predicted value is found in `r l1[[1,1]]` with predicted number of fatalities of `r round(l1[[1,3]],1)`, however the real value is  `r round(l1[[1,2]],1)`.
+  - The largest positive deviance from the predicted value is found in `r u1[[1,1]]` with deaths due to Covid 19  estimate of `r round(u1[[1,3]],1)`, however the real value is `r round(u1[[1,2]],1)`.
+
+
+
+## Executive Summary 
+
+The correlation between the number of recorded daily deaths due to Covid 19 and number of daily recorded cases was investigated. The pattern of association resembled linear after log-log transformation, thus the decision to use a linear model was made. Based on the model, we can assume that there is a possible correlation between X and Y. 
+  
+- The conducted analysis can be strengthened by adding observations for a longer time frame (e.g. a month, half a year, etc.) 
+- The analysis is weakened by the missing observations for countries that don't report Covid 19 cases with high frequeny.  
+
+
+## Appendix
+
+### 1. Distributions based on variable transformation
+
+ 1.1. **Registered number of deaths - Registered number of cases: level-level model without scaling**
+
+
+```{r, echo=FALSE, message=F}
+ggplot( df , aes(x = CasePerCap, y = DeathsPerCap)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Registered covid cases/capita",y = "Registered covid deaths/capita")
+```
+
+ 1.2. **Registered number of deaths/capita - ln(Registered number of cases/capita): log-transformation applied for registered cases/capita**
+
+```{r, echo=FALSE ,message=F}
+ggplot( df , aes(x = CasePerCap, y = DeathsPerCap)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases/capita (for 1M population, ln scale )",y = "Registered Covid Deaths/capita (for 1M population)") +
+  scale_x_continuous( trans = log_trans(),  breaks = c(1,2,5,10,20,50,100,200,500,1000,10000) )
+```
+
+ 1.3. **ln(Registered number of deaths/capita) - Registered number of cases/capita: log-transformation applied for registered deaths/capita**
+
+```{r, echo=FALSE, message=F}
+ggplot( df , aes(x = CasePerCap, y = DeathsPerCap))  +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases/capita (for 1M population, ln scale )",y = "Deaths/capita (for 1M population, ln scale )") +
+  scale_y_continuous( trans = log_trans(),  breaks = c(1,2,5,10,20,50,100,200,500,1000,10000) )
+```
+
+ 1.4. **ln(Registered number of deaths/capita) - ln(Registered number of cases/capita): log-transformation applied for registered deaths/capita and registered cases/capita**
+
+```{r, echo=FALSE, message=F}
+ggplot( df , aes(x = CasePerCap, y = DeathsPerCap))  +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Cases/capita (for 1M population, ln scale )", y = "Deaths/capita (for 1M population, ln scale )") +
+  scale_x_continuous( trans = log_trans(),  breaks = c(1,2,5,10,20,50,100,200,500,1000,10000) )+
+  scale_y_continuous( trans = log_trans(),  breaks = c(1,2,5,10,20,50,100,200,500,1000,10000)  )
+```
+
+
+
+### 2. Explored Models:
+
+
+```{r, echo=FALSE, message=F}
+#  Adding powers of the explanatory variable to the data frame:
+df <- df %>% mutate( ln_CPC_sq = ln_CPC^2,
+                     ln_CPC_cb = ln_CPC^3 )
+```
+
+### Regressions 
+Investigating which regression model would enable a meaningful analysis. Using lm_robust to tackle issues associated heteroscedasticity.  
+
+  2.1. **reg1: ln_DPC = alpha + beta * ln_CPC**
+
+
+```{r, echo=FALSE}
+ggplot( data = df, aes( x = ln_CPC, y = ln_DPC ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( method = lm , color = 'red' )
+```
+
+
+
+ 2.2. **reg2: ln_DPC = alpha + beta_1 * ln_CPC + beta_2 * ln_CPC^2 + beta_3 *ln_CPC^3**
+
+
+```{r, echo=FALSE, message=F}
+reg3 <- lm_robust( ln_DPC ~ ln_CPC + ln_CPC_sq + ln_CPC_cb , data = df)
+ggplot( data = df, aes( x = ln_CPC, y = ln_DPC ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( formula = y ~ poly(x,3) , method = lm , color = 'red' )
+```
+
+
+ 2.3. **reg4: ln_DPC = alpha + beta_1 * ln_CPC * 1(ln_CPC < 50) + beta_2 * ln_CPC * 1(ln_CPC >= 50)**
+
+```{r, echo=FALSE, message=F}
+cutoff <- 50
+# log transforming the cutoff
+cutoff_ln<- log( cutoff )
+```
+
+
+```{r, echo=FALSE, message=F}
+ggplot( data = df, aes( x = ln_CPC, y = ln_DPC ) ) + 
+  geom_point( color='blue') +
+  geom_smooth( formula = y ~ lspline(x,cutoff_ln) , method = lm , color = 'red' )
+```
+
+
+
+ 2.4. **reg5: ln_DPC = alpha + beta * ln_CPC, weights: population (weighted-ols)**
+
+
+```{r, echo=FALSE}
+ggplot(data = df, aes(x = ln_CPC, y = ln_DPC )) +
+  geom_point(data = df, aes(size=df$Population),  color = 'blue', shape = 16, alpha = 0.6,  show.legend=F) +
+  geom_smooth(aes(weight = df$Population), method = "lm", color='red')+
+  scale_size(range = c(1, 15)) +
+  labs(x = "ln(Cases/capita) ",y = "ln(Death/capita)")
+```
+
+
+        
+
+
+
